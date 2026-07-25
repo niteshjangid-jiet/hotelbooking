@@ -91,8 +91,8 @@ const HotelDetailPage = () => {
             {/* HOTEL POLICIES */}
             <HotelPolicies policies={hotel.policies} />
 
-            {/* NEARBY ATTRACTIONS */}
-            <NearbyAttractions attractions={hotel.nearby_attractions} city={hotel.city} />
+            {/* NEARBY ATTRACTIONS & GEOAPIFY INTERACTIVE MAP */}
+            <NearbyAttractions hotel={hotel} attractions={hotel.nearby_attractions} city={hotel.city} />
 
             {/* REVIEWS & RATINGS */}
             <ReviewSection reviews={hotel.reviews} ratingBreakdown={hotel.rating_breakdown} rating={hotel.rating} />
