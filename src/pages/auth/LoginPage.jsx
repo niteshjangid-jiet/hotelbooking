@@ -15,6 +15,7 @@ const LoginPage = () => {
   const from = location.state?.from?.pathname || '/';
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   const {
     register,
@@ -30,6 +31,7 @@ const LoginPage = () => {
 
   const onSubmit = async (data) => {
     setIsSubmitting(true);
+    setAuthError(null);
     try {
       await signIn({
         email: data.email,
@@ -39,6 +41,7 @@ const LoginPage = () => {
       navigate(from, { replace: true });
     } catch (err) {
       console.error('Login error:', err);
+      setAuthError(err.message || 'Failed to sign in. Please check your credentials.');
     } finally {
       setIsSubmitting(false);
     }
@@ -51,6 +54,18 @@ const LoginPage = () => {
       badge="Member Portal"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        {authError && (
+          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs font-medium flex items-center justify-between">
+            <span>{authError}</span>
+            <button
+              type="button"
+              onClick={() => setAuthError(null)}
+              className="text-rose-400 hover:text-rose-300 ml-2 text-base font-bold leading-none"
+            >
+              &times;
+            </button>
+          </div>
+        )}
         {/* EMAIL INPUT */}
         <div className="flex flex-col gap-1.5 w-full">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-300">

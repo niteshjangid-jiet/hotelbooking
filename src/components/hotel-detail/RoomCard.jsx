@@ -56,7 +56,7 @@ const RoomCard = ({ room, hotelId, hotelName }) => {
           </div>
 
           {/* ROOM SPECIFICATIONS GRID */}
-          <div className="grid grid-cols-3 gap-3 my-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4 p-3.5 bg-slate-50 rounded-2xl border border-slate-100">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
               <HiUserGroup className="text-blue-600 text-base flex-shrink-0" />
               <div>
@@ -78,6 +78,14 @@ const RoomCard = ({ room, hotelId, hotelName }) => {
               <div>
                 <span className="block text-[10px] text-slate-400 font-bold uppercase">Room Size</span>
                 <span>{room.size || '450 sq.ft'}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              <HiSparkles className="text-purple-600 text-base flex-shrink-0" />
+              <div>
+                <span className="block text-[10px] text-slate-400 font-bold uppercase">Available Rooms</span>
+                <span className="text-emerald-700 font-extrabold">{room.available_rooms || room.availableRooms || room.total_rooms || 4} Rooms Left</span>
               </div>
             </div>
           </div>

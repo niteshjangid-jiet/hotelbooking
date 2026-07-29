@@ -4,8 +4,53 @@ import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
+const MOCK_USERS_DB_KEY = 'hotel_booking_registered_users';
 const MOCK_STORAGE_KEY = 'hotel_booking_mock_user';
 const MOCK_SESSION_KEY = 'hotel_booking_mock_session';
+
+// Seed default demo user for fallback mode if no users exist
+const DEFAULT_DEMO_USER = {
+  id: 'usr_demo_1',
+  email: 'demo@hotelbooking.com',
+  password: 'Password123!',
+  user_metadata: {
+    full_name: 'Demo Traveler',
+    phone: '+91 98765 43210',
+    avatar_url: 'https://ui-avatars.com/api/?name=Demo+Traveler&background=2563EB&color=fff',
+  },
+  created_at: new Date().toISOString(),
+};
+
+const getStoredMockUsers = () => {
+  try {
+    const raw = localStorage.getItem(MOCK_USERS_DB_KEY);
+    if (!raw) {
+      const initialList = [DEFAULT_DEMO_USER];
+      localStorage.setItem(MOCK_USERS_DB_KEY, JSON.stringify(initialList));
+      return initialList;
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      const initialList = [DEFAULT_DEMO_USER];
+      localStorage.setItem(MOCK_USERS_DB_KEY, JSON.stringify(initialList));
+      return initialList;
+    }
+    return parsed;
+  } catch (err) {
+    console.error('Error reading mock users database:', err);
+    return [DEFAULT_DEMO_USER];
+  }
+};
+
+const saveMockUserToDb = (newUser) => {
+  try {
+    const users = getStoredMockUsers();
+    users.push(newUser);
+    localStorage.setItem(MOCK_USERS_DB_KEY, JSON.stringify(users));
+  } catch (err) {
+    console.error('Error saving mock user to storage:', err);
+  }
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -36,7 +81,7 @@ export const AuthProvider = ({ children }) => {
           }
         }
       } catch (err) {
-        console.warn('Auth initialization check failed, using fallback:', err.message);
+        console.warn('Auth initialization check failed:', err.message);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -64,10 +109,12 @@ export const AuthProvider = ({ children }) => {
   // REGISTER / SIGNUP
   const signUp = async ({ name, email, phone, password }) => {
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+
     try {
       if (isSupabaseConfigured()) {
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: cleanEmail,
           password,
           options: {
             data: {
@@ -78,33 +125,48 @@ export const AuthProvider = ({ children }) => {
           },
         });
 
-        if (error) throw error;
+        if (error) {
+          throw new Error(error.message || 'Failed to create account in Supabase.');
+        }
 
-        // Optionally insert into custom 'users' table
-        try {
-          await supabase.from('users').insert([
-            {
+        // Insert into custom 'users' table
+        if (data?.user) {
+          try {
+            await supabase.from('users').upsert({
               id: data.user.id,
               name,
-              email,
+              email: cleanEmail,
               phone,
               avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0D8ABC&color=fff`,
               created_at: new Date().toISOString(),
-            },
-          ]);
-        } catch (tableErr) {
-          console.warn('Custom users table insert info:', tableErr.message);
+            });
+          } catch (tableErr) {
+            console.warn('Custom users table insert info:', tableErr.message);
+          }
         }
 
-        setUser(data.user);
-        setSession(data.session);
-        toast.success('Account created successfully! Welcome to HotelBookingSite.');
-        return { success: true, user: data.user };
+        if (data.session) {
+          setUser(data.user);
+          setSession(data.session);
+          toast.success('Account created successfully! Welcome to HotelBookingSite.');
+          return { success: true, user: data.user };
+        } else {
+          toast.success('Account created! Please check your email to confirm your registration.');
+          return { success: true, user: data.user, requiresVerification: true };
+        }
       } else {
-        // Fallback demo signup
-        const mockUser = {
+        // Fallback demo signup with strict email uniqueness check & password storage
+        const usersList = getStoredMockUsers();
+        const existingUser = usersList.find((u) => u.email.toLowerCase() === cleanEmail);
+
+        if (existingUser) {
+          throw new Error('An account with this email address already exists. Please sign in instead.');
+        }
+
+        const newUserRecord = {
           id: 'usr_' + Date.now(),
-          email,
+          email: cleanEmail,
+          password: password, // Store password in mock storage for verification
           user_metadata: {
             full_name: name,
             phone,
@@ -112,6 +174,16 @@ export const AuthProvider = ({ children }) => {
           },
           created_at: new Date().toISOString(),
         };
+
+        saveMockUserToDb(newUserRecord);
+
+        const mockUser = {
+          id: newUserRecord.id,
+          email: newUserRecord.email,
+          user_metadata: newUserRecord.user_metadata,
+          created_at: newUserRecord.created_at,
+        };
+
         const mockSession = {
           access_token: 'mock_token_' + Date.now(),
           user: mockUser,
@@ -121,7 +193,7 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(mockSession));
         setUser(mockUser);
         setSession(mockSession);
-        toast.success('Demo Account created successfully! Welcome to HotelBookingSite.');
+        toast.success('Account created successfully! Welcome to HotelBookingSite.');
         return { success: true, user: mockUser };
       }
     } catch (error) {
@@ -135,42 +207,50 @@ export const AuthProvider = ({ children }) => {
   // LOGIN / SIGN IN
   const signIn = async ({ email, password, rememberMe = true }) => {
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+
     try {
       if (isSupabaseConfigured()) {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
+          email: cleanEmail,
           password,
         });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase auth error:', error);
+          if (error.message.includes('Invalid login credentials')) {
+            throw new Error('Invalid email or password. Please check your credentials and try again.');
+          }
+          throw new Error(error.message || 'Invalid email or password.');
+        }
+
+        if (!data.user) {
+          throw new Error('Authentication failed. No user found.');
+        }
 
         setUser(data.user);
         setSession(data.session);
         toast.success(`Welcome back, ${data.user?.user_metadata?.full_name || 'Traveler'}!`);
         return { success: true, user: data.user };
       } else {
-        // Fallback demo signin
-        const storedUser = localStorage.getItem(MOCK_STORAGE_KEY);
-        let mockUser;
-        if (storedUser) {
-          mockUser = JSON.parse(storedUser);
-          if (mockUser.email !== email) {
-            mockUser.email = email;
-          }
-        } else {
-          const userName = email.split('@')[0].replace('.', ' ');
-          const formattedName = userName.charAt(0).toUpperCase() + userName.slice(1);
-          mockUser = {
-            id: 'usr_demo',
-            email,
-            user_metadata: {
-              full_name: formattedName,
-              phone: '+91 98765 43210',
-              avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(formattedName)}&background=2563EB&color=fff`,
-            },
-            created_at: new Date().toISOString(),
-          };
+        // Fallback demo signin with strict credential verification
+        const usersList = getStoredMockUsers();
+        const foundUser = usersList.find((u) => u.email.toLowerCase() === cleanEmail);
+
+        if (!foundUser) {
+          throw new Error('No user account found with this email. Please check your email or create a new account.');
         }
+
+        if (foundUser.password !== password) {
+          throw new Error('Invalid password. Please check your password and try again.');
+        }
+
+        const mockUser = {
+          id: foundUser.id,
+          email: foundUser.email,
+          user_metadata: foundUser.user_metadata,
+          created_at: foundUser.created_at,
+        };
 
         const mockSession = { access_token: 'mock_token_' + Date.now(), user: mockUser };
         if (rememberMe) {
@@ -193,9 +273,10 @@ export const AuthProvider = ({ children }) => {
   // FORGOT PASSWORD
   const forgotPassword = async (email) => {
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
     try {
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
         if (error) throw error;
@@ -217,6 +298,14 @@ export const AuthProvider = ({ children }) => {
       if (isSupabaseConfigured()) {
         const { error } = await supabase.auth.updateUser({ password: newPassword });
         if (error) throw error;
+      } else if (user?.email) {
+        // Update password in mock database
+        const users = getStoredMockUsers();
+        const idx = users.findIndex((u) => u.email.toLowerCase() === user.email.toLowerCase());
+        if (idx !== -1) {
+          users[idx].password = newPassword;
+          localStorage.setItem(MOCK_USERS_DB_KEY, JSON.stringify(users));
+        }
       }
       toast.success('Your password has been updated successfully!');
       return { success: true };
@@ -271,6 +360,14 @@ export const AuthProvider = ({ children }) => {
           ...session,
           user: updatedUser,
         };
+
+        // Update in mock user DB as well
+        const users = getStoredMockUsers();
+        const idx = users.findIndex((u) => u.id === user.id || u.email === user.email);
+        if (idx !== -1) {
+          users[idx].user_metadata = updatedUser.user_metadata;
+          localStorage.setItem(MOCK_USERS_DB_KEY, JSON.stringify(users));
+        }
 
         localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(updatedUser));
         localStorage.setItem(MOCK_SESSION_KEY, JSON.stringify(updatedSession));
@@ -348,6 +445,14 @@ export const AuthProvider = ({ children }) => {
       if (isSupabaseConfigured()) {
         const { error } = await supabase.auth.updateUser({ password: newPassword });
         if (error) throw error;
+      } else if (user?.email) {
+        // Update password in mock users DB
+        const users = getStoredMockUsers();
+        const idx = users.findIndex((u) => u.email.toLowerCase() === user.email.toLowerCase());
+        if (idx !== -1) {
+          users[idx].password = newPassword;
+          localStorage.setItem(MOCK_USERS_DB_KEY, JSON.stringify(users));
+        }
       }
       toast.success('Your password has been changed successfully!');
       return { success: true };
@@ -365,7 +470,6 @@ export const AuthProvider = ({ children }) => {
     try {
       if (isSupabaseConfigured()) {
         try {
-          // Soft delete or RPC if configured, then sign out
           await supabase.auth.signOut();
         } catch (e) {
           console.warn('Supabase auth signout error during delete:', e);
@@ -409,6 +513,7 @@ export const AuthProvider = ({ children }) => {
     session,
     loading,
     isAuthenticated: !!user,
+    isSupabaseMode: isSupabaseConfigured(),
     signUp,
     signIn,
     forgotPassword,
@@ -430,3 +535,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

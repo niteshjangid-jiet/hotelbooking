@@ -157,7 +157,14 @@ const BookingSuccessPage = () => {
           <div className="flex items-center justify-between bg-blue-600/10 border border-blue-500/20 p-5 rounded-2xl mb-8">
             <div>
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Total Amount Paid</span>
-              <span className="text-xs text-blue-400 font-semibold">Includes all taxes (18% GST)</span>
+              <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                <HiShieldCheck /> Payment Status: Paid (Razorpay Test Mode)
+              </span>
+              {(booking.razorpay_payment_id || location.state?.payment?.razorpay_payment_id) && (
+                <span className="text-[11px] text-slate-400 font-mono block mt-1">
+                  Txn ID: {booking.razorpay_payment_id || location.state?.payment?.razorpay_payment_id}
+                </span>
+              )}
             </div>
             <div className="text-2xl font-black text-blue-400 tracking-tight">
               {formatPrice(booking.total_price)}

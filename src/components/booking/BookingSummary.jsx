@@ -23,6 +23,8 @@ const BookingSummary = ({
   subtotal = 0,
   taxes = 0,
   totalPrice = 0,
+  onConfirmBooking,
+  isSubmitting = false,
 }) => {
   if (!hotel) return null;
 
@@ -51,7 +53,7 @@ const BookingSummary = ({
             hotel.image_url ||
             'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80'
           }
-          alt={hotel.hotel_name}
+          alt={hotel.hotel_name || hotel.name}
           className="w-24 h-24 rounded-2xl object-cover border border-slate-200 dark:border-slate-800 flex-shrink-0 shadow-sm"
         />
         <div className="flex-1 space-y-1">
@@ -62,7 +64,7 @@ const BookingSummary = ({
           </div>
 
           <h4 className="text-base font-extrabold text-slate-900 dark:text-white line-clamp-1 leading-snug">
-            {hotel.hotel_name}
+            {hotel.hotel_name || hotel.name}
           </h4>
 
           <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 font-medium">
@@ -81,7 +83,7 @@ const BookingSummary = ({
           <div className="flex items-center justify-between">
             <span className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
               <FaBed className="text-blue-500" />
-              {room.name || 'Standard Deluxe Room'}
+              {room.name || room.room_type || 'Standard Deluxe Room'}
             </span>
           </div>
         </div>
@@ -129,11 +131,45 @@ const BookingSummary = ({
         totalPrice={totalPrice}
       />
 
+      {/* PROCEED TO PAYMENT CTA BUTTON */}
+      {onConfirmBooking && (
+        <button
+          type="button"
+          onClick={onConfirmBooking}
+          disabled={isSubmitting}
+          className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-600/30 transition-all hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSubmitting ? (
+            <span className="flex items-center gap-2">
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Processing...
+            </span>
+          ) : (
+            <>
+              <HiShieldCheck className="text-xl text-emerald-400" />
+              <span>Proceed to Pay & Confirm</span>
+            </>
+          )}
+        </button>
+      )}
+
+      {/* ACCEPTED PAYMENT METHODS & REASSURANCE */}
+      <div className="bg-slate-50 dark:bg-slate-950/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 text-center space-y-2">
+        <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          Secured by Razorpay Checkout
+        </p>
+        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+          <span className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px]">💳 Cards</span>
+          <span className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px]">📱 UPI / GPay</span>
+          <span className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-[10px]">🏦 NetBanking</span>
+        </div>
+      </div>
+
       {/* TRUST REASSURANCE */}
       <div className="space-y-2 pt-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-2">
           <HiCheckCircle className="text-emerald-500 text-base flex-shrink-0" />
-          <span>No credit card required for booking reservation</span>
+          <span>Instant reservation lock upon payment</span>
         </div>
         <div className="flex items-center gap-2">
           <HiShieldCheck className="text-blue-500 text-base flex-shrink-0" />

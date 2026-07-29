@@ -13,6 +13,7 @@ const SignupPage = () => {
   const navigate = useNavigate();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [authError, setAuthError] = useState(null);
 
   const {
     register,
@@ -34,6 +35,7 @@ const SignupPage = () => {
 
   const onSubmit = async (data) => {
     setIsSubmitting(true);
+    setAuthError(null);
     try {
       await signUp({
         name: data.fullName,
@@ -44,6 +46,7 @@ const SignupPage = () => {
       navigate('/', { replace: true });
     } catch (err) {
       console.error('Signup error:', err);
+      setAuthError(err.message || 'Failed to create account. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -56,6 +59,18 @@ const SignupPage = () => {
       badge="Join the Privilege Club"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3.5">
+        {authError && (
+          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs font-medium flex items-center justify-between">
+            <span>{authError}</span>
+            <button
+              type="button"
+              onClick={() => setAuthError(null)}
+              className="text-rose-400 hover:text-rose-300 ml-2 text-base font-bold leading-none"
+            >
+              &times;
+            </button>
+          </div>
+        )}
         {/* FULL NAME */}
         <div className="flex flex-col gap-1 w-full">
           <label className="text-xs font-bold uppercase tracking-wider text-slate-300">

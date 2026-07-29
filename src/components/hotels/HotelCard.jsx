@@ -13,7 +13,10 @@ import toast from 'react-hot-toast';
 import { formatPrice } from '../../utils/formatters';
 import Button from '../common/Button';
 
+import { useNavigate } from 'react-router-dom';
+
 const HotelCard = ({ hotel, index = 0 }) => {
+  const navigate = useNavigate();
   const [isWishlisted, setIsWishlisted] = useState(hotel.isWishlisted || false);
 
   // Normalize data keys between Database Schema & Legacy Mock data
@@ -41,15 +44,13 @@ const HotelCard = ({ hotel, index = 0 }) => {
   };
 
   const handleBookNow = () => {
-    toast.success(`Redirecting to booking checkout for ${name}...`, {
-      icon: '🏨',
-    });
+    const targetId = hotel.id || hotel.slug;
+    navigate(`/booking?hotelId=${targetId}`);
   };
 
   const handleViewDetails = () => {
-    toast.info(`Opening details page for ${name}...`, {
-      icon: '🔍',
-    });
+    const targetId = hotel.id || hotel.slug;
+    navigate(`/hotels/${targetId}`);
   };
 
   return (

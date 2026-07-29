@@ -90,9 +90,6 @@ export const checkRoomAvailability = async ({ hotelId, roomId, checkIn, checkOut
  * @returns {Promise<{ success: boolean, booking: Object }>}
  */
 export const createBooking = async (bookingPayload) => {
-  // Artificial delay for payment-free instant confirmation feel
-  await new Promise((resolve) => setTimeout(resolve, 800));
-
   const bookingId = generateBookingId();
   const createdAt = new Date().toISOString();
 
@@ -118,7 +115,10 @@ export const createBooking = async (bookingPayload) => {
     taxes: Number(bookingPayload.taxes) || 0,
     total_price: Number(bookingPayload.totalPrice) || 0,
     special_requests: bookingPayload.specialRequests || '',
-    booking_status: 'Confirmed',
+    booking_status: bookingPayload.bookingStatus || 'Confirmed',
+    payment_status: bookingPayload.paymentStatus || 'paid',
+    razorpay_payment_id: bookingPayload.razorpayPaymentId || null,
+    razorpay_order_id: bookingPayload.razorpayOrderId || null,
     created_at: createdAt,
   };
 
@@ -140,6 +140,10 @@ export const createBooking = async (bookingPayload) => {
           taxes: newBooking.taxes,
           total_price: newBooking.total_price,
           booking_status: newBooking.booking_status,
+          payment_status: newBooking.payment_status,
+          user_phone: newBooking.user_phone,
+          razorpay_payment_id: newBooking.razorpay_payment_id,
+          razorpay_order_id: newBooking.razorpay_order_id,
           created_at: newBooking.created_at,
         },
       ]).select();
@@ -147,7 +151,7 @@ export const createBooking = async (bookingPayload) => {
       if (!error) {
         savedToSupabase = true;
       } else {
-        console.warn('Supabase booking insert error:', error.message);
+        console.warn('Supabase booking insert notice:', error.message);
       }
     } catch (e) {
       console.warn('Failed to insert booking into Supabase:', e);
@@ -168,6 +172,59 @@ export const createBooking = async (bookingPayload) => {
     booking: newBooking,
     savedToSupabase,
   };
+};
+
+/**
+ * Update payment status & Razorpay transaction details for a booking
+ */
+export const updateBookingPaymentStatus = async (bookingId, { payment_status, booking_status, razorpay_payment_id, razorpay_order_id }) => {
+  let updatedInSupabase = false;
+
+  if (isSupabaseConfigured() && bookingId) {
+    try {
+      const updatePayload = {
+        payment_status: payment_status || 'paid',
+        booking_status: booking_status || 'Confirmed',
+      };
+      if (razorpay_payment_id) updatePayload.razorpay_payment_id = razorpay_payment_id;
+      if (razorpay_order_id) updatePayload.razorpay_order_id = razorpay_order_id;
+
+      const { error } = await supabase
+        .from('bookings')
+        .update(updatePayload)
+        .eq('booking_id', bookingId);
+
+      if (!error) {
+        updatedInSupabase = true;
+      } else {
+        console.warn('Supabase updateBookingPaymentStatus notice:', error?.message);
+      }
+    } catch (e) {
+      console.warn('Supabase updateBookingPaymentStatus error:', e);
+    }
+  }
+
+  // Update local storage
+  try {
+    const localBookings = JSON.parse(localStorage.getItem(MOCK_BOOKINGS_KEY) || '[]');
+    const updated = localBookings.map((b) => {
+      if (b.booking_id === bookingId) {
+        return {
+          ...b,
+          payment_status: payment_status || b.payment_status || 'paid',
+          booking_status: booking_status || b.booking_status || 'Confirmed',
+          razorpay_payment_id: razorpay_payment_id || b.razorpay_payment_id,
+          razorpay_order_id: razorpay_order_id || b.razorpay_order_id,
+        };
+      }
+      return b;
+    });
+    localStorage.setItem(MOCK_BOOKINGS_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.error('LocalStorage update payment status error:', err);
+  }
+
+  return { success: true, updatedInSupabase };
 };
 
 /**

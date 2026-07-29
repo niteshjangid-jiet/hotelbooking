@@ -5,10 +5,13 @@ import toast from 'react-hot-toast';
 import { HiOfficeBuilding, HiUser, HiMail, HiPhone, HiClipboardList, HiShieldCheck, HiArrowLeft } from 'react-icons/hi';
 import { useAuth } from '../context/AuthContext';
 import { fetchHotelByIdOrSlug } from '../services/hotelService';
-import { checkRoomAvailability, createBooking } from '../services/bookingService';
+import { checkRoomAvailability, createBooking, logUserActivity } from '../services/bookingService';
+import { initiateRazorpayCheckout, recordPaymentRecord } from '../services/paymentService';
 import DateSelector from '../components/booking/DateSelector';
 import BookingSummary from '../components/booking/BookingSummary';
 import BookingLoader from '../components/booking/BookingLoader';
+import { isUserPhoneVerified } from '../services/phoneAuthService';
+import OtpVerificationModal from '../components/auth/OtpVerificationModal';
 
 const BookingPage = () => {
   const [searchParams] = useSearchParams();
@@ -36,6 +39,8 @@ const BookingPage = () => {
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+
   // Form State
   const [checkIn, setCheckIn] = useState(checkInParam || tomorrowStr);
   const [checkOut, setCheckOut] = useState(checkOutParam || defaultCheckOutStr);
@@ -50,6 +55,7 @@ const BookingPage = () => {
     if (user) {
       if (!guestName) setGuestName(user.user_metadata?.full_name || user.name || '');
       if (!guestEmail) setGuestEmail(user.email || '');
+      if (!guestPhone) setGuestPhone(user.user_metadata?.phone || user.phone || '');
     }
   }, [user]);
 
@@ -83,6 +89,127 @@ const BookingPage = () => {
 
     loadHotel();
   }, [hotelIdParam, roomIdParam]);
+
+  // Initiate Payment Checkout
+  const handleProceedToPayment = async (phoneToUse) => {
+    try {
+      setIsSubmitting(true);
+
+      // Check availability
+      const availCheck = await checkRoomAvailability({
+        hotelId: hotel.id || hotel.slug,
+        roomId: selectedRoom.id,
+        checkIn,
+        checkOut,
+      });
+
+      if (!availCheck.available) {
+        setIsSubmitting(false);
+        toast.error(availCheck.message || 'Room is unavailable for selected dates.');
+        return;
+      }
+
+      // Calculate nights and financial summary
+      const dIn = new Date(checkIn);
+      const dOut = new Date(checkOut);
+      const diffTime = Math.abs(dOut - dIn);
+      const nights = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      const pricePerNight = selectedRoom.price || hotel.starting_price || 25000;
+      const subtotal = pricePerNight * nights;
+      const taxes = Math.round(subtotal * 0.18);
+      const totalPrice = subtotal + taxes;
+
+      const tempRef = `REF-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      // Open Razorpay Checkout Modal
+      await initiateRazorpayCheckout({
+        hotel,
+        room: selectedRoom,
+        totalAmount: totalPrice,
+        userDetails: {
+          name: guestName,
+          email: guestEmail,
+          phone: phoneToUse || guestPhone,
+        },
+        bookingRef: tempRef,
+        onSuccess: async (paymentInfo) => {
+          try {
+            // Build Final Booking Payload with Payment Details
+            const payload = {
+              userId: user.id,
+              userName: guestName,
+              userEmail: guestEmail,
+              userPhone: phoneToUse || guestPhone,
+              hotelId: hotel.id || hotel.slug,
+              hotelName: hotel.hotel_name || hotel.name,
+              hotelImage: hotel.image_url,
+              hotelCity: hotel.city,
+              roomId: selectedRoom.id,
+              roomName: selectedRoom.name,
+              roomImage: selectedRoom.image,
+              checkIn,
+              checkOut,
+              guests,
+              nights,
+              pricePerNight,
+              subtotal,
+              taxes,
+              totalPrice,
+              specialRequests,
+              bookingStatus: 'Confirmed',
+              paymentStatus: 'paid',
+              razorpayPaymentId: paymentInfo.razorpay_payment_id,
+              razorpayOrderId: paymentInfo.razorpay_order_id,
+            };
+
+            const result = await createBooking(payload);
+
+            if (result.success) {
+              // Store payment record in payments table
+              await recordPaymentRecord({
+                booking_id: result.booking.booking_id,
+                razorpay_order_id: paymentInfo.razorpay_order_id,
+                razorpay_payment_id: paymentInfo.razorpay_payment_id,
+                amount: totalPrice,
+                status: 'paid',
+              });
+
+              // Log user activity
+              logUserActivity(
+                user.id,
+                'booking',
+                `Booked ${selectedRoom.name} at ${hotel.hotel_name || hotel.name} (Payment ID: ${paymentInfo.razorpay_payment_id})`
+              );
+
+              toast.success('Payment Successful! Reservation Confirmed.');
+              setIsSubmitting(false);
+              navigate(`/booking-success/${result.booking.booking_id}`, {
+                state: { booking: result.booking, payment: paymentInfo },
+              });
+            } else {
+              throw new Error('Failed to save reservation after payment.');
+            }
+          } catch (err) {
+            console.error('Payment post-processing error:', err);
+            toast.error('Payment completed, but logging reservation failed. Please contact support.');
+            setIsSubmitting(false);
+          }
+        },
+        onCancel: () => {
+          setIsSubmitting(false);
+          toast.error('Payment cancelled. You can complete your reservation whenever ready.');
+        },
+        onError: (err) => {
+          setIsSubmitting(false);
+          toast.error(err?.message || 'Payment failed. Please try again.');
+        },
+      });
+    } catch (err) {
+      console.error('Booking initiation error:', err);
+      toast.error(err.message || 'Booking process failed. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
 
   // Form Submission
   const handleSubmitBooking = async (e) => {
@@ -128,71 +255,22 @@ const BookingPage = () => {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-
-      // Check availability
-      const availCheck = await checkRoomAvailability({
-        hotelId: hotel.id || hotel.slug,
-        roomId: selectedRoom.id,
-        checkIn,
-        checkOut,
-      });
-
-      if (!availCheck.available) {
-        setIsSubmitting(false);
-        toast.error(availCheck.message || 'Room is unavailable for selected dates.');
-        return;
-      }
-
-      // Calculate nights and financial summary
-      const dIn = new Date(checkIn);
-      const dOut = new Date(checkOut);
-      const diffTime = Math.abs(dOut - dIn);
-      const nights = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-      const pricePerNight = selectedRoom.price || hotel.starting_price || 25000;
-      const subtotal = pricePerNight * nights;
-      const taxes = Math.round(subtotal * 0.18);
-      const totalPrice = subtotal + taxes;
-
-      // Build Payload
-      const payload = {
-        userId: user.id,
-        userName: guestName,
-        userEmail: guestEmail,
-        userPhone: guestPhone,
-        hotelId: hotel.id || hotel.slug,
-        hotelName: hotel.hotel_name || hotel.name,
-        hotelImage: hotel.image_url,
-        hotelCity: hotel.city,
-        roomId: selectedRoom.id,
-        roomName: selectedRoom.name,
-        roomImage: selectedRoom.image,
-        checkIn,
-        checkOut,
-        guests,
-        nights,
-        pricePerNight,
-        subtotal,
-        taxes,
-        totalPrice,
-        specialRequests,
-      };
-
-      const result = await createBooking(payload);
-
-      if (result.success) {
-        toast.success('Reservation Confirmed Successfully!');
-        navigate(`/booking-success/${result.booking.booking_id}`, { state: { booking: result.booking } });
-      } else {
-        throw new Error('Failed to create booking.');
-      }
-    } catch (err) {
-      console.error('Booking creation error:', err);
-      toast.error(err.message || 'Booking process failed. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    // Check if phone number is verified via OTP
+    if (!isUserPhoneVerified(user)) {
+      toast.custom((t) => (
+        <div className="bg-slate-900 border border-blue-500/30 text-white p-4 rounded-2xl shadow-xl flex items-center gap-3">
+          <span className="text-xl">📱</span>
+          <div>
+            <p className="font-bold text-xs">Mobile Verification Required</p>
+            <p className="text-[11px] text-slate-400">Please verify your phone number to complete booking.</p>
+          </div>
+        </div>
+      ), { duration: 3000 });
+      setIsOtpModalOpen(true);
+      return;
     }
+
+    await handleProceedToPayment(guestPhone);
   };
 
   if (loading) {
@@ -258,7 +336,7 @@ const BookingPage = () => {
               <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-md space-y-4">
                 <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
                   <div className="w-10 h-10 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-lg">
-                    <HiHotel />
+                    <HiOfficeBuilding />
                   </div>
                   <div>
                     <h3 className="text-lg font-extrabold text-white">Selected Stay Details</h3>
@@ -396,14 +474,24 @@ const BookingPage = () => {
                 </div>
               </div>
 
-              {/* SUBMIT BUTTON FOR MOBILE / FALLBACK */}
-              <div className="lg:hidden">
+              {/* SUBMIT BUTTON */}
+              <div className="pt-2">
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-600/30"
+                  className="w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-blue-600/30 transition-all hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Confirm & Lock Reservation
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Opening Payment Window...
+                    </span>
+                  ) : (
+                    <>
+                      <HiShieldCheck className="text-xl text-emerald-400" />
+                      <span>Proceed to Pay & Confirm Reservation</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -423,6 +511,18 @@ const BookingPage = () => {
           </div>
         </div>
       </div>
+
+      {/* MOBILE OTP VERIFICATION MODAL */}
+      <OtpVerificationModal
+        isOpen={isOtpModalOpen}
+        onClose={() => setIsOtpModalOpen(false)}
+        initialPhone={guestPhone}
+        onSuccess={(verifiedPhone) => {
+          setIsOtpModalOpen(false);
+          setGuestPhone(verifiedPhone);
+          handleProceedToPayment(verifiedPhone);
+        }}
+      />
     </div>
   );
 };
