@@ -217,6 +217,15 @@ const Navbar = () => {
 
         {/* MOBILE MENU HAMBURGER BUTTON */}
         <div className="flex md:hidden items-center gap-2">
+          {user && (
+            <Link
+              to="/profile"
+              className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-teal-400 text-white font-bold text-xs flex items-center justify-center shadow-md uppercase"
+              title="My Profile"
+            >
+              {getUserDisplayName().charAt(0)}
+            </Link>
+          )}
           <button
             onClick={toggleMobileMenu}
             aria-label="Toggle Navigation"
@@ -239,7 +248,7 @@ const Navbar = () => {
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="md:hidden bg-slate-900 text-white border-b border-slate-800 px-4 pt-4 pb-6 shadow-2xl overflow-hidden"
+            className="md:hidden bg-slate-900 text-white border-b border-slate-800 px-4 pt-4 pb-6 shadow-2xl max-h-[85vh] overflow-y-auto"
           >
             <div className="flex flex-col gap-2">
               {NAV_LINKS.map((link) => {

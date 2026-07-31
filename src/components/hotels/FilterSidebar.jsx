@@ -257,7 +257,7 @@ const FilterSidebar = ({
             className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm"
             onClick={() => setIsOpenOnMobile(false)}
           ></div>
-          <div className="relative ml-auto w-full max-w-xs bg-white h-full overflow-y-auto p-6 shadow-2xl z-10 flex flex-col justify-between">
+          <div className="relative ml-auto w-[88%] sm:max-w-xs bg-white h-full overflow-y-auto p-5 sm:p-6 shadow-2xl z-10 flex flex-col justify-between">
             {content}
           </div>
         </div>

@@ -37,9 +37,9 @@ const MainLayout = ({ children, showNewsletter = true }) => {
           exit={{ opacity: 0, scale: 0.8 }}
           onClick={scrollToTop}
           aria-label="Scroll to top"
-          className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-2xl bg-blue-600 text-white shadow-2xl flex items-center justify-center hover:bg-blue-500 hover:scale-110 active:scale-95 transition-all duration-300 cursor-pointer border border-white/20"
+          className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-40 w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-blue-600 text-white shadow-2xl flex items-center justify-center hover:bg-blue-500 hover:scale-110 active:scale-95 transition-all duration-300 cursor-pointer border border-white/20"
         >
-          <HiArrowUp className="text-xl" />
+          <HiArrowUp className="text-lg sm:text-xl" />
         </motion.button>
       )}
     </div>
